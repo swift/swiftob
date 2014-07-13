@@ -13,6 +13,7 @@ local sluift = require('sluift')
 local environment = require('environment')
 local serialize = require('serialize')
 local storage = require('storage')
+local program_options = require('program_options')
 
 -- The (maximum) interval between iterators of the event loop.
 -- This shouldn't really impact anything, so better leave it as it is.
@@ -272,13 +273,14 @@ function reload()
 	end
 end
 
+local options = program_options.parse(arg)
 
 -- Load all the scripts
 reload()
 
 -- Start the loop
-local jid = os.getenv("SWIFTOB_JID")
-local password = os.getenv("SWIFTOB_PASS")
+local jid = options.jid
+local password = options.password
 --sluift.debug = 1
 client = sluift.new_client(jid, password)
 while not quit_requested do
