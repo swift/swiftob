@@ -14,6 +14,8 @@ local environment = require('environment')
 local serialize = require('serialize')
 local storage = require('storage')
 local program_options = require('program_options')
+local util = require('util')
+local configuration = require('configuration')
 
 -- The (maximum) interval between iterators of the event loop.
 -- This shouldn't really impact anything, so better leave it as it is.
@@ -24,19 +26,13 @@ local SCRIPTS_DIR = "scripts"
 local reload
 
 local client = nil
+local config = nil
 local tasks = {}
 local commands = {}
 local listeners = {}
 local periodicals = {}
 local quit_requested = false
 local restart_requested = false
-
-local function have_lua52()
-	local _, _, major, minor = string.find(_VERSION, "^Lua (%d+)%.(%d)")
-	if tonumber(major) > 5 then return true
-	elseif tonumber(major) == 5 then return tonumber(minor) >= 2
-	else return false end
-end
 
 local function call(f)
 	return xpcall(f, function(e) print(debug.traceback(e)) end)
@@ -132,6 +128,7 @@ local function reply_to(message, body, options)
 end
 
 local function load_script(script_file, privileged)
+	local _, _, basename = string.find(script_file, "([^\\/:]*)%.lua$")
 	local script_storage = storage.load(script_file .. '.storage')
 
 	-- Create swiftob interface
@@ -157,7 +154,10 @@ local function load_script(script_file, privileged)
 		copy = sluift.copy,
 		with = sluift.with,
 		read_file = sluift.read_file,
-		tprint = sluift.tprint
+		tprint = sluift.tprint,
+
+		-- Configuration
+		config = config.scripts[basename] or {}
 	}
 
 	-- Add privileged commands
@@ -188,20 +188,10 @@ local function load_script(script_file, privileged)
 	env.sleep = coroutine.yield
 
 	-- Load the script
-	local script, message
-	if have_lua52() then
-		script, message = loadfile(script_file, 't', env)
-		if not script then 
-			print("Unable to read " .. script_file .. ": " .. message)
-			return 
-		end
-	else
-		script, message = loadfile(script_file)
-		if not script then 
-			print("Unable to read " .. script_file .. ": " .. message)
-			return 
-		end
-		setfenv(script, env)
+	local script, message = util.load_file(script_file, env)
+	if not script then 
+		print("Unable to read " .. script_file .. ": " .. message)
+		return 
 	end
 
 	local result, message = call(function() script(swiftob) end)
@@ -273,14 +263,27 @@ function reload()
 	end
 end
 
+-- Parse options
 local options = program_options.parse(arg)
+local config_file = options.config or (os.getenv("HOME") .. "/.swiftob.lua")
+if options.help then
+	print(string.format([[Usage: %s [OPTIONS]
+Options:
+	--config=FILE  Use FILE as config file
+]], arg[0]))
+	do return end
+end
+if type(config_file) ~= "string" then error("Expected config file") end
+
+-- Load configuration file
+config = configuration.load(config_file)
 
 -- Load all the scripts
 reload()
 
 -- Start the loop
-local jid = options.jid
-local password = options.password
+local jid = config.jid
+local password = config.password
 --sluift.debug = 1
 client = sluift.new_client(jid, password)
 while not quit_requested do
@@ -295,10 +298,14 @@ while not quit_requested do
 			local new_tasks = {}
 			for _, task in pairs(tasks) do
 				if task.next_activation_time <= current_time then
-					local success, sleep_time = coroutine.resume(task.coroutine)
-					if coroutine.status(task.coroutine) ~= "dead" then
-						task.next_activation_time = current_time + sleep_time
-						table.insert(new_tasks, task)
+					local success, result = coroutine.resume(task.coroutine)
+					if success then
+						if coroutine.status(task.coroutine) ~= "dead" then
+							task.next_activation_time = current_time + result
+							table.insert(new_tasks, task)
+						end
+					else
+						print(result)
 					end
 				else
 					table.insert(new_tasks, task)

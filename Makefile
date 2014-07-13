@@ -1,3 +1,3 @@
 .PHONY: lint
 lint: 
-	lua lint.lua *.lua
+	lua lint.lua $(filter-out config%.lua, $(wildcard *.lua))
