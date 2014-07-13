@@ -9,6 +9,12 @@
 -- back using load()
 --
 
+local function insert(t, ...)
+	for _, v in pairs({...}) do
+		table.insert(t, v)
+	end
+end
+
 -- Serialize values of primitive types
 local function serialize_value(value)
 	local result = tostring(value)
@@ -19,41 +25,42 @@ local function serialize_value(value)
 	end
 end
 
--- Serialize tables
+-- Serialize tables.
+-- Returns a list of strings.
 local function serialize_table(table, indent, accumulator, history)
 	local INDENT = '  '
-	local accumulator = accumulator or ''
+	local accumulator = accumulator or {}
 	local history = history or {}
 	local indent = indent or ''
-	accumulator = accumulator .. '{'
+	insert(accumulator, '{')
 	history[table] = true
 	local is_first = true
 	for key, value in pairs(table) do
 		if not is_first then
-			accumulator = accumulator .. ','
+			insert(accumulator, ',')
 		end
 		is_first = false
-		accumulator = accumulator .. '\n' .. indent .. INDENT .. '[' .. serialize_value(key) .. '] = '
+		insert(accumulator, '\n', indent, INDENT, '[', serialize_value(key), '] = ')
 		if type(value) == 'table' then
 			if history[value] then
 				error("Cannot serialize self-referencing tables")
 			else
-				accumulator = serialize_table(value, indent .. INDENT, accumulator, history)
+				serialize_table(value, indent .. INDENT, accumulator, history)
 			end
 		else
-			accumulator = accumulator .. serialize_value(value)
+			insert(accumulator, serialize_value(value))
 		end
 	end
 	history[table] = false
 	if not is_first then
-		accumulator = accumulator .. '\n' .. indent
+		insert(accumulator, '\n', indent)
 	end
-	accumulator = accumulator .. '}'
+	insert(accumulator, '}')
 	return accumulator
 end
 
 local function serialize(value)
-	if type(value) == "table" then return serialize_table(value)
+	if type(value) == "table" then return table.concat(serialize_table(value))
 	else return serialize_value(value) end
 end
 
