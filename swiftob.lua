@@ -203,7 +203,7 @@ local function load_script(script_file, privileged)
 		setfenv(script, env)
 	end
 
-	local result, message = call(script)
+	local result, message = call(function() script(swiftob) end)
 	if not result then
 		print(message)
 	end

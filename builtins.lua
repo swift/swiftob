@@ -4,6 +4,8 @@
 	See LICENSE for more information.
 --]]
 
+local swiftob = ...
+
 swiftob.register_command({
 	name = 'quit',
 	allowed_role = 'owner',
